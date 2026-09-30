@@ -1,0 +1,11 @@
+[browser]
+gatherUsageStats = false
+
+[server]
+# headless = true avoids Streamlit's first-run e-mail prompt; the launchers open the browser.
+headless = true
+maxUploadSize = 50
+
+[theme]
+base = "light"
+primaryColor = "#2a78d6"
