@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/
+# data and large training outputs (the dataset is downloaded from Kaggle)
+data/raw/
+data/images/
+outputs/
+*.pt
+*.pth
+*.npz
+cache/
+# OS
+.DS_Store
+Thumbs.db
