@@ -61,7 +61,7 @@ class TrainConfig:
     head_epochs: int = 3
     head_lr: float = 1e-3
     # Phase 2 fine-tunes the whole network with a smaller learning rate.
-    finetune_epochs: int = 12
+    finetune_epochs: int = 15
     finetune_lr: float = 3e-4
     weight_decay: float = 1e-2
     label_smoothing: float = 0.1

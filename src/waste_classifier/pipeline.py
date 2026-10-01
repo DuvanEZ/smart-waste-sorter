@@ -163,6 +163,13 @@ def data_understanding(root, ws: Workspace, split_cfg=SplitConfig(), workers=2, 
     summary["imbalance_ratio_max_min"] = float(counts.max() / max(counts.min(), 1))
     summary["class_share_min_max"] = [float(shares.min()), float(shares.max())]
     summary["shannon_evenness"] = float(-(shares * np.log(shares)).sum() / np.log(len(shares)))
+    # Class balance once byte-identical copies are counted only once (the "true" number of photos).
+    unique = stats[ok].groupby("class_name")["md5"].nunique().reindex(CLASS_NAMES).fillna(0).astype(int)
+    summary["unique_images_per_class"] = unique.to_dict()
+    summary["unique_images_total"] = int(stats.loc[ok, "md5"].nunique())
+    summary["imbalance_ratio_unique"] = float(unique.max() / max(unique.min(), 1))
+    summary["duplicate_share_by_class"] = {c: round(float(1 - unique[c] / counts[c]), 4) if counts[c] else 0.0
+                                           for c in CLASS_NAMES}
     meta = find_metadata_csv(root)
     if meta is not None:
         try:
@@ -196,6 +203,7 @@ def visualise(ctx: Context, ws: Workspace, log=print) -> list:
     s = ctx.stats[ctx.stats["readable"].fillna(False).astype(bool)]
     figs = [
         plots.class_distribution(ctx.stats["class_name"].value_counts(), ws.fig("fig01_class_distribution.png")),
+        plots.duplicates_by_class(s, ws.fig("fig01b_duplicates_by_class.png")),
         plots.sample_grid(s, ws.fig("fig02_sample_images.png")),
         plots.file_properties(ctx.stats, ws.fig("fig03_file_properties.png")),
         plots.feature_boxplots(s, ["brightness", "contrast", "saturation", "colourfulness", "sharpness",
@@ -225,6 +233,18 @@ def visualise(ctx: Context, ws: Workspace, log=print) -> list:
     ctx.timings["visualise_s"] = time.time() - t0
     log(f"Saved {len([f for f in figs if f])} figures to {ws.fig_dir}")
     return [f for f in figs if f]
+
+
+def provenance(ctx: Context, ws: Workspace, workers=2, log=print):
+    """Which public data sets do the images come from? (perceptual-hash matching)"""
+    from .provenance import check_provenance
+
+    t0 = time.time()
+    check_provenance(ctx.stats, ws.metrics_dir, workers=workers, log=log)
+    summary = pd.read_csv(ws.metrics_dir / "provenance_summary.csv", index_col=0)
+    plots.provenance_bars(summary, ws.fig("fig25_provenance.png"))
+    ctx.timings["provenance_s"] = time.time() - t0
+    return summary
 
 
 # =======================================================================================
@@ -430,6 +450,7 @@ def train_final(ctx: Context, ws: Workspace, device, cfg=TrainConfig(), workers=
 
     t0 = time.time()
     set_seed(cfg.seed)
+    torch.backends.cudnn.benchmark = True   # fastest convolution algorithms for a fixed input size
     tr_loader, va_loader, _ = _loaders(ctx, cfg.img_size, cfg.batch_size, workers, device)
     model = create_efficientnet(len(CLASS_NAMES), pretrained=True, drop_rate=cfg.drop_rate,
                                 drop_path_rate=cfg.drop_path_rate)
@@ -571,7 +592,10 @@ def export_model(ctx: Context, ws: Workspace, cfg=TrainConfig(), log=print) -> d
     from . import evaluate as ev
     from .export import benchmark_latency, compress_weights_fp16, export_onnx, onnx_logits
 
+    import gc
+
     t0 = time.time()
+    gc.collect()                    # release memory held by earlier steps (data loaders, features)
     model = ctx.model.eval().cpu()
     fp32 = export_onnx(model, ws.cache_dir / "waste_classifier_fp32.onnx", cfg.img_size)
     final = compress_weights_fp16(fp32, ws.model_dir / "waste_classifier.onnx")
@@ -579,8 +603,8 @@ def export_model(ctx: Context, ws: Workspace, cfg=TrainConfig(), log=print) -> d
     tf = build_transforms(cfg.img_size, train=False)
     check = test.sample(min(256, len(test)), random_state=cfg.seed)
     xb = torch.stack([tf(load_rgb(p)) for p in check["path"]])
-    with torch.inference_mode():
-        ref = model(xb).numpy()
+    with torch.inference_mode():   # small chunks keep the CPU memory low
+        ref = np.concatenate([model(xb[i:i + 32]).numpy() for i in range(0, len(xb), 32)])
     out32, out16 = onnx_logits(fp32, xb.numpy()), onnx_logits(final, xb.numpy())
     parity = {
         "max_abs_diff_fp32": float(np.abs(ref - out32).max()),
@@ -657,6 +681,10 @@ def run_all(zip_path=None, data_dir=None, out_dir="outputs", device=None, worker
     visualise(ctx, ws, log)
     deep_embeddings(ctx, ws, device, workers=workers, log=log)
     tsne_map(ctx, ws, log=log)
+    try:
+        provenance(ctx, ws, workers=workers, log=log)
+    except Exception as exc:  # needs internet access to Kaggle; optional
+        log(f"Provenance check skipped: {exc}")
     split_data(ctx, ws, split_cfg, log)
     baselines(ctx, ws, device, base_cfg, run_cnn=run_cnn, workers=workers, log=log)
     train_final(ctx, ws, device, train_cfg, workers, log)

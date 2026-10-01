@@ -74,11 +74,17 @@ def compress_weights_fp16(src, dst, min_elements: int = 1024) -> Path:
     return Path(dst)
 
 
-def onnx_logits(onnx_path, batch: np.ndarray) -> np.ndarray:
+def onnx_logits(onnx_path, batch: np.ndarray, chunk: int = 32) -> np.ndarray:
+    """Logits of an ONNX model for a batch of images, computed in small chunks to limit memory."""
     import onnxruntime as ort
 
-    session = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
-    return session.run(None, {session.get_inputs()[0].name: batch.astype(np.float32)})[0]
+    options = ort.SessionOptions()
+    options.enable_cpu_mem_arena = False      # return memory after each run (Colab has ~12 GB RAM)
+    session = ort.InferenceSession(str(onnx_path), sess_options=options, providers=["CPUExecutionProvider"])
+    name = session.get_inputs()[0].name
+    out = [session.run(None, {name: batch[i:i + chunk].astype(np.float32)})[0] for i in range(0, len(batch), chunk)]
+    del session
+    return np.concatenate(out)
 
 
 def benchmark_latency(onnx_path, img_size: int = 224, runs: int = 30) -> dict:

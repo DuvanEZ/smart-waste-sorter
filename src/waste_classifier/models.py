@@ -28,8 +28,14 @@ def create_efficientnet(num_classes: int, pretrained: bool = True,
     """
     import timm
 
-    return timm.create_model("efficientnet_b0", num_classes=num_classes, drop_rate=drop_rate,
-                             drop_path_rate=drop_path_rate, **_pretrained_kwargs(pretrained))
+    model = timm.create_model("efficientnet_b0", num_classes=num_classes, drop_rate=drop_rate,
+                              drop_path_rate=drop_path_rate, **_pretrained_kwargs(pretrained))
+    # Start the new output layer at zero: every class starts with the same score (loss = ln 6)
+    # instead of large random logits, so the head converges quickly in phase 1.
+    head = model.get_classifier()
+    nn.init.zeros_(head.weight)
+    nn.init.zeros_(head.bias)
+    return model
 
 
 def create_feature_extractor(pretrained: bool = True) -> nn.Module:

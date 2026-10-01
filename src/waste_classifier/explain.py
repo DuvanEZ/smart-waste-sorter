@@ -11,7 +11,15 @@ class GradCAM:
 
     def __init__(self, model, target_layer=None):
         self.model = model.eval()
-        layer = target_layer if target_layer is not None else model.conv_head  # EfficientNet (timm)
+        # Grad-CAM needs the *activated* feature maps of the last convolutional stage. In timm's
+        # EfficientNet, conv_head is followed by bn2 = BatchNorm + SiLU, so bn2's output is used.
+        # (conv_head alone gives pre-activation values, whose negative parts invert the heat-map.)
+        if target_layer is not None:
+            layer = target_layer
+        elif hasattr(model, "bn2"):
+            layer = model.bn2
+        else:
+            layer = model.conv_head
         self.activations = None
         self.gradients = None
         self._handle = layer.register_forward_hook(self._save)

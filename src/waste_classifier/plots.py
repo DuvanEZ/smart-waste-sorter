@@ -81,16 +81,47 @@ def class_distribution(counts: pd.Series, out, title="Images per class"):
     total = counts.sum()
     fig, ax = plt.subplots(figsize=(7.5, 3.8))
     bars = ax.bar(counts.index, counts.values, width=0.55, color=ACCENT, zorder=2)
-    for bar, value in zip(bars, counts.values):
-        ax.text(bar.get_x() + bar.get_width() / 2, value + total * 0.004, f"{int(value):,}\n{value / total:.1%}",
-                ha="center", va="bottom", fontsize=8.5, color=INK_2)
+    for bar, value in zip(bars, counts.values):     # labels inside the bars, clear of the mean line
+        ax.text(bar.get_x() + bar.get_width() / 2, value - counts.max() * 0.025, f"{int(value):,}\n{value / total:.1%}",
+                ha="center", va="top", fontsize=8.5, color="white", fontweight="bold", zorder=3)
     mean = counts.mean()
     ax.axhline(mean, color=MUTED, lw=1, zorder=1)
-    ax.text(len(counts) - 0.45, mean, f"mean {mean:,.0f}", va="bottom", ha="right", fontsize=8, color=MUTED)
+    ax.set_xlim(-0.6, len(counts) - 0.4 + 0.75)            # room for the label right of the last bar
+    ax.text(len(counts) - 0.32, mean, f"mean\n{mean:,.0f}", va="center", ha="left", fontsize=8, color=MUTED)
     ax.set_ylabel("Number of images")
     ax.set_ylim(0, counts.max() * 1.22)
     _no_grid_x(ax)
     ax.set_title(title)
+    return _save(fig, out)
+
+
+def duplicates_by_class(stats: pd.DataFrame, out):
+    """Unique images vs redundant exact copies per class (stacked horizontal bars).
+
+    A file is a 'redundant copy' when another file with the same MD5 checksum exists;
+    one file of every identical group is counted as unique.
+    """
+    df = stats[["class_name", "md5"]].copy()
+    per_class = df.groupby("class_name").agg(files=("md5", "size"), unique=("md5", "nunique")).reindex(CLASS_NAMES)
+    per_class["copies"] = per_class["files"] - per_class["unique"]
+    fig, ax = plt.subplots(figsize=(8.6, 3.6))
+    y = np.arange(len(per_class))
+    ax.barh(y, per_class["unique"], height=0.58, color=ACCENT, label="unique images", zorder=2)
+    ax.barh(y, per_class["copies"], left=per_class["unique"], height=0.58, color=ACCENT_2,
+            label="redundant exact copies", zorder=2)
+    xmax = per_class["files"].max()
+    for i, r in enumerate(per_class.itertuples()):
+        ax.text(r.unique / 2, i, f"{r.unique:,}", ha="center", va="center", fontsize=8.5, color="white")
+        share = r.copies / r.files if r.files else 0
+        ax.text(r.files + xmax * 0.012, i, f"+{r.copies:,} copies ({share:.0%})" if r.copies else "no copies",
+                ha="left", va="center", fontsize=8.5, color=INK_2)
+    ax.set_yticks(y, per_class.index)
+    ax.invert_yaxis()
+    ax.set_xlim(0, xmax * 1.28)
+    ax.set_xlabel("Number of files")
+    ax.legend(loc="upper center", bbox_to_anchor=(0.45, -0.2), ncol=2)
+    _no_grid_y(ax)
+    ax.set_title("Unique images and byte-identical copies per class")
     return _save(fig, out)
 
 
@@ -539,17 +570,42 @@ def roc_pr_curves(y: np.ndarray, prob: np.ndarray, out):
     return _save(fig, out)
 
 
-def reliability_diagram(before: pd.DataFrame, after: pd.DataFrame, ece_before, ece_after, temperature, out):
-    fig, ax = plt.subplots(figsize=(5.8, 5.2))
-    ax.plot([0, 1], [0, 1], color=MUTED, lw=1, label="perfect calibration")
-    for df, color, label in [(before, ACCENT_2, f"before scaling (ECE {ece_before:.3f})"),
-                             (after, ACCENT, f"after T = {temperature:.2f} (ECE {ece_after:.3f})")]:
-        d = df.dropna()
-        ax.plot(d["confidence"], d["accuracy"], color=color, marker="o", ms=5, label=label)
-    ax.set_xlabel("Mean predicted confidence"); ax.set_ylabel("Observed accuracy")
-    ax.set_xlim(0, 1); ax.set_ylim(0, 1.02)
-    ax.legend(loc="upper left", fontsize=8)
+def reliability_diagram(before: pd.DataFrame, after: pd.DataFrame, ece_before, ece_after, temperature, out,
+                        min_count: int = 10):
+    """Calibration curve (top) and number of test images per confidence bin (bottom).
+
+    Marker area is proportional to the number of images in the bin; bins with fewer than
+    `min_count` images are drawn hollow because their accuracy is very uncertain.
+    """
+    fig, (ax, axh) = plt.subplots(2, 1, figsize=(6.2, 6.4), sharex=True,
+                                  gridspec_kw={"height_ratios": [3.2, 1], "hspace": 0.08})
+    ax.plot([0, 1], [0, 1], color=MUTED, lw=1, label="perfect calibration", zorder=1)
+    width = 0.1 / 2.6
+    for k, (df, color, label) in enumerate([(before, ACCENT_2, f"before scaling (ECE {ece_before:.3f})"),
+                                            (after, ACCENT, f"after T = {temperature:.2f} (ECE {ece_after:.3f})")]):
+        d = df.dropna(subset=["confidence"])
+        ax.plot(d["confidence"], d["accuracy"], color=color, lw=1.4, alpha=0.8, zorder=2, label=label)
+        big = d["count"] >= min_count
+        sizes = 14 + 220 * np.sqrt(d["count"] / max(d["count"].max(), 1))
+        ax.scatter(d.loc[big, "confidence"], d.loc[big, "accuracy"], s=sizes[big], color=color, zorder=3,
+                   edgecolor=SURFACE, linewidth=0.8)
+        ax.scatter(d.loc[~big, "confidence"], d.loc[~big, "accuracy"], s=sizes[~big], facecolor=SURFACE,
+                   edgecolor=color, linewidth=1.2, zorder=3)
+        centres = (df["bin_low"] + df["bin_high"]) / 2 + (k - 0.5) * width
+        axh.bar(centres, df["count"].clip(lower=0.8), width=width, color=color, zorder=2)
+    ax.set_ylabel("Observed accuracy")
+    ax.set_xlim(0, 1); ax.set_ylim(0, 1.03)
+    ax.legend(loc="lower right", fontsize=8)
+    ax.text(0.98, 0.25, f"marker area ~ images per bin\nhollow = fewer than {min_count} images",
+            transform=ax.transAxes, fontsize=7.5, color=INK_2, va="bottom", ha="right")
     ax.set_title("Reliability diagram (test set)")
+    axh.set_yscale("log")
+    axh.yaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:g}"))
+    axh.yaxis.set_minor_formatter(NullFormatter())
+    axh.set_ylim(0.8, None)
+    axh.set_ylabel("Images")
+    axh.set_xlabel("Mean predicted confidence (10 bins)")
+    _no_grid_x(axh)
     return _save(fig, out)
 
 
@@ -571,12 +627,13 @@ def confidence_analysis(prob: np.ndarray, y: np.ndarray, selective: pd.DataFrame
     ax.plot(selective["threshold"], selective["coverage"], color=ACCENT_2, marker="s", ms=3.5, label="share accepted (coverage)")
     ax.axvline(threshold, color=INK_2, lw=1)
     row = selective.iloc[(selective["threshold"] - threshold).abs().argmin()]
-    ax.text(threshold - 0.02, 0.45,
-            f"app threshold {threshold:.0%}\naccuracy {row.accuracy:.1%}\ncoverage {row.coverage:.1%}",
-            fontsize=8, color=INK_2, va="center", ha="right",
-            bbox={"facecolor": SURFACE, "edgecolor": GRID, "boxstyle": "round,pad=0.3"})
+    # annotation placed in axes coordinates so it always stays inside the plot
+    ax.annotate(f"app threshold {threshold:.0%}\naccuracy {row.accuracy:.1%}\ncoverage {row.coverage:.1%}",
+                xy=(threshold, 0.5), xycoords=("data", "axes fraction"), xytext=(-8, 0), textcoords="offset points",
+                fontsize=8, color=INK_2, va="center", ha="right",
+                bbox={"facecolor": SURFACE, "edgecolor": GRID, "boxstyle": "round,pad=0.3"})
     ax.set_xlabel("Confidence threshold"); ax.set_ylabel("Proportion")
-    ax.legend(loc="lower left", bbox_to_anchor=(0, 0.18))
+    ax.legend(loc="lower left")
     ax.set_title("Selective prediction: rejecting uncertain images")
     fig.tight_layout()
     return _save(fig, out)
@@ -589,7 +646,7 @@ def image_gallery(items, out, title, cols=6, subtitle=None):
     if not items:
         return None
     rows = int(np.ceil(len(items) / cols))
-    fig, axes = plt.subplots(rows, cols, figsize=(2.05 * cols, 2.35 * rows), squeeze=False)
+    fig, axes = plt.subplots(rows, cols, figsize=(2.05 * cols, 2.6 * rows + 0.7), squeeze=False)
     for ax in axes.ravel():
         ax.set_xticks([]); ax.set_yticks([]); ax.grid(False)
         for s in ax.spines.values():
@@ -597,17 +654,19 @@ def image_gallery(items, out, title, cols=6, subtitle=None):
     for ax, (path, caption, ok) in zip(axes.ravel(), items):
         with Image.open(path) as im:
             ax.imshow(im.convert("RGB"))
-        ax.set_xlabel(caption, fontsize=7.8, color=INK if ok else "#b52e2e")
+        # caption drawn in axes coordinates so that two-line captions never hide behind the next row
+        ax.text(0.5, -0.04, caption, transform=ax.transAxes, ha="center", va="top", fontsize=7.8,
+                color=INK if ok else "#b52e2e")
     _suptitle(fig, title, subtitle)
-    fig.tight_layout(rect=(0, 0, 1, 0.9 if subtitle else 0.93))
+    fig.subplots_adjust(left=0.01, right=0.99, top=0.86 if subtitle else 0.9, bottom=0.07, wspace=0.08, hspace=0.42)
     return _save(fig, out)
 
 
-def gradcam_grid(images: np.ndarray, cams: np.ndarray, captions, out, cols=4):
-    """Pairs of (image, Grad-CAM overlay)."""
+def gradcam_grid(images: np.ndarray, cams: np.ndarray, captions, out, cols=2):
+    """Pairs of (image, Grad-CAM overlay) with the caption under each pair."""
     n = len(images)
     rows = int(np.ceil(n / cols))
-    fig, axes = plt.subplots(rows, cols * 2, figsize=(2.0 * cols * 2, 2.25 * rows), squeeze=False)
+    fig, axes = plt.subplots(rows, cols * 2, figsize=(2.0 * cols * 2, 2.55 * rows + 0.6), squeeze=False)
     for ax in axes.ravel():
         ax.set_xticks([]); ax.set_yticks([]); ax.grid(False)
         for s in ax.spines.values():
@@ -617,11 +676,16 @@ def gradcam_grid(images: np.ndarray, cams: np.ndarray, captions, out, cols=4):
         axes[r, 2 * c].imshow(images[k])
         axes[r, 2 * c + 1].imshow(images[k])
         axes[r, 2 * c + 1].imshow(cams[k], cmap="jet", alpha=0.45)
-        axes[r, 2 * c].set_xlabel(captions[k], fontsize=7.8, color=INK_2)
-        axes[r, 2 * c + 1].set_xlabel("Grad-CAM", fontsize=7.8, color=MUTED)
+        axes[r, 2 * c].text(0.5, -0.05, captions[k], transform=axes[r, 2 * c].transAxes, ha="center", va="top",
+                            fontsize=8, color=INK_2)
+        axes[r, 2 * c + 1].text(0.5, -0.05, "Grad-CAM", transform=axes[r, 2 * c + 1].transAxes, ha="center",
+                                va="top", fontsize=8, color=MUTED)
+    for k in range(n, rows * cols):
+        r, c = divmod(k, cols)
+        axes[r, 2 * c].set_visible(False); axes[r, 2 * c + 1].set_visible(False)
     _suptitle(fig, "Grad-CAM: image regions that drove the prediction",
-              "Red = high influence on the predicted class, blue = low influence")
-    fig.tight_layout(rect=(0, 0, 1, 0.9))
+              "Red = high influence on the predicted class, blue = low influence; last pairs = most confident mistakes")
+    fig.subplots_adjust(left=0.01, right=0.99, top=0.9, bottom=0.04, wspace=0.05, hspace=0.25)
     return _save(fig, out)
 
 
@@ -637,4 +701,32 @@ def robustness_bars(df: pd.DataFrame, out):
     ax.set_xlabel("Accuracy on the test set after the corruption")
     _no_grid_y(ax)
     ax.set_title("Robustness to image corruptions")
+    return _save(fig, out)
+
+
+def provenance_bars(summary: pd.DataFrame, out):
+    """Share of each class that matches each candidate source dataset (100% stacked bars)."""
+    df = summary.drop(index="total", errors="ignore").reindex(CLASS_NAMES).fillna(0)
+    order = [c for c in df.columns if c != "unidentified"] + (["unidentified"] if "unidentified" in df.columns else [])
+    df = df[order]
+    shares = df.div(df.sum(axis=1), axis=0)
+    colors = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"][: len(order) - 1] + [GREY_MARK]
+    fig, ax = plt.subplots(figsize=(10, 3.9))
+    left = np.zeros(len(shares))
+    for col, color in zip(order, colors):
+        vals = shares[col].to_numpy()
+        ax.barh(shares.index, vals, left=left, height=0.55, color=color, edgecolor=SURFACE, linewidth=2,
+                label=col, zorder=2)
+        for i, (l, v) in enumerate(zip(left, vals)):
+            if v >= 0.08:
+                ax.text(l + v / 2, i, f"{v:.0%}", ha="center", va="center", fontsize=8,
+                        color="white" if color != GREY_MARK else INK)
+        left += vals
+    ax.invert_yaxis()
+    ax.set_xlim(0, 1)
+    ax.xaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:.0%}"))
+    ax.set_xlabel("Share of the class's images whose perceptual hash matches the source (distance <= 6)")
+    ax.legend(ncol=2, loc="upper left", bbox_to_anchor=(0, -0.22), fontsize=8)
+    _no_grid_y(ax)
+    ax.set_title("Where the images come from: matches with public source datasets")
     return _save(fig, out)

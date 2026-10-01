@@ -144,43 +144,65 @@ def load_rgb(path) -> Image.Image:
         return img.convert("RGB")
 
 
+class RandomGaussianNoise:
+    """Add camera-like Gaussian noise to a tensor in [0, 1] with probability `p`.
+
+    The noise strength is drawn uniformly from [0, max_sigma] for every image, so the
+    network learns to ignore the sensor noise of photos taken in poor light.
+    """
+
+    def __init__(self, p: float = 0.3, max_sigma: float = 0.08):
+        self.p, self.max_sigma = p, max_sigma
+
+    def __call__(self, x):
+        import torch
+
+        if torch.rand(1).item() < self.p:
+            sigma = torch.rand(1).item() * self.max_sigma
+            x = (x + torch.randn_like(x) * sigma).clamp(0.0, 1.0)
+        return x
+
+
+def _augmentations(img_size: int):
+    """Random transformations applied to training images (PIL stage)."""
+    from torchvision import transforms as T
+
+    return [
+        T.RandomResizedCrop(img_size, scale=(0.6, 1.0), ratio=(0.8, 1.25), interpolation=T.InterpolationMode.BICUBIC),
+        T.RandomHorizontalFlip(p=0.5),
+        T.RandomVerticalFlip(p=0.2),
+        T.RandomRotation(degrees=20, interpolation=T.InterpolationMode.BILINEAR),
+        T.ColorJitter(brightness=0.25, contrast=0.25, saturation=0.25),  # hue unchanged: colour is informative
+        T.RandomApply([T.GaussianBlur(kernel_size=5, sigma=(0.1, 1.5))], p=0.2),  # slightly out-of-focus photos
+    ]
+
+
 def build_transforms(img_size: int = 224, train: bool = False):
     """Image transformations applied before the images enter the network.
 
     Evaluation: resize the shorter side to `img_size`, centre-crop a square,
     convert to a tensor in [0, 1] and normalise with the ImageNet statistics.
     Training: the same plus random data augmentation (crop, flips, rotation,
-    colour jitter) so the model sees a slightly different version of every image
-    in every epoch, which reduces over-fitting.
+    brightness/contrast/saturation jitter, blur and sensor noise) so the model sees a
+    slightly different version of every image in every epoch, which reduces
+    over-fitting. The hue is not changed because colour carries class information
+    (brown cardboard, green glass).
     """
     from torchvision import transforms as T
 
     bicubic = T.InterpolationMode.BICUBIC
-    normalise = [T.ToTensor(), T.Normalize(IMAGENET_MEAN, IMAGENET_STD)]
+    normalise = T.Normalize(IMAGENET_MEAN, IMAGENET_STD)
     if train:
-        return T.Compose([
-            T.RandomResizedCrop(img_size, scale=(0.6, 1.0), ratio=(0.8, 1.25), interpolation=bicubic),
-            T.RandomHorizontalFlip(p=0.5),
-            T.RandomVerticalFlip(p=0.2),
-            T.RandomRotation(degrees=20, interpolation=T.InterpolationMode.BILINEAR),
-            T.ColorJitter(brightness=0.25, contrast=0.25, saturation=0.25, hue=0.02),
-            *normalise,
-        ])
-    return T.Compose([T.Resize(img_size, interpolation=bicubic), T.CenterCrop(img_size), *normalise])
+        return T.Compose([*_augmentations(img_size), T.ToTensor(), RandomGaussianNoise(p=0.3, max_sigma=0.08), normalise])
+    return T.Compose([T.Resize(img_size, interpolation=bicubic), T.CenterCrop(img_size), T.ToTensor(), normalise])
 
 
 def augmentation_preview(img_size: int = 224):
     """Training augmentation without normalisation (used only to plot examples)."""
     from torchvision import transforms as T
 
-    return T.Compose([
-        T.RandomResizedCrop(img_size, scale=(0.6, 1.0), ratio=(0.8, 1.25),
-                            interpolation=T.InterpolationMode.BICUBIC),
-        T.RandomHorizontalFlip(p=0.5),
-        T.RandomVerticalFlip(p=0.2),
-        T.RandomRotation(degrees=20, interpolation=T.InterpolationMode.BILINEAR),
-        T.ColorJitter(brightness=0.25, contrast=0.25, saturation=0.25, hue=0.02),
-    ])
+    return T.Compose([*_augmentations(img_size), T.ToTensor(), RandomGaussianNoise(p=0.3, max_sigma=0.08),
+                      T.ToPILImage()])
 
 
 def make_dataset(paths, labels, transform):
