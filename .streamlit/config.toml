@@ -9,3 +9,7 @@ maxUploadSize = 50
 [theme]
 base = "light"
 primaryColor = "#2a78d6"
+
+[client]
+# Hide Streamlit's developer menu and "Deploy" button: the user only sees the application.
+toolbarMode = "viewer"
