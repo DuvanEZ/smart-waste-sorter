@@ -1,5 +1,5 @@
 # Libraries needed to RUN THE APPLICATION (Python 3.10 - 3.13)
-streamlit>=1.30,<2
+streamlit>=1.36,<2
 onnxruntime>=1.17
 numpy>=1.24
 pillow>=10.0

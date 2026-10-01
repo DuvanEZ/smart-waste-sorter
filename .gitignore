@@ -16,3 +16,7 @@ cache/
 # OS
 .DS_Store
 Thumbs.db
+
+# Node.js dependencies of the report/slide builders
+node_modules/
+package-lock.json
