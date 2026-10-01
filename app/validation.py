@@ -58,7 +58,9 @@ def validate_image_bytes(name: str, data: bytes) -> ValidationResult:
     except Image.DecompressionBombError:
         return ValidationResult(name, False, error="The image is far too large (possible decompression bomb).")
     except (UnidentifiedImageError, OSError, SyntaxError, ValueError) as exc:
-        return ValidationResult(name, False, error=f"The file is not a valid or readable image ({type(exc).__name__}).")
+        return ValidationResult(name, False, error="The file is not a valid or readable image: it may be damaged, "
+                                                   f"incomplete or not really a picture ({type(exc).__name__}). "
+                                                   "Please choose another photo.")
 
     if n_frames > 1:
         warnings.append("Animated/multi-page image: only the first frame is used.")

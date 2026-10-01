@@ -94,7 +94,8 @@ def show_result(name: str, validation, prediction) -> None:
                        f"({second[1]:.1%}). Try a clearer photo of a single item on a plain background.")
         for w in validation.warnings:
             st.info(w)
-        st.markdown(f"**Where does it go?** {guide['bin']}")
+        where = "Where does it go?" if prediction.is_confident else f"Where does it go if it is {prediction.label}?"
+        st.markdown(f"**{where}** {guide['bin']}")
         for tip in guide["tips"]:
             st.markdown(f"- {tip}")
         st.dataframe(
@@ -115,10 +116,13 @@ def classify_many(items):
                          "Status": "REJECTED", "Disposal": "-", "Message": v.error})
             continue
         p = by_name[name]
+        notes = list(v.warnings)
+        if not p.is_confident:
+            notes.insert(0, f"Low confidence (below {threshold:.0%}): check this item manually.")
         rows.append({"File": name, "Prediction": p.label, "Confidence": p.confidence,
                      "Second choice": f"{p.top_k[1][0]} ({p.top_k[1][1]:.1%})",
                      "Status": "OK" if p.is_confident else "UNCERTAIN",
-                     "Disposal": advice_for(p.label)["bin"], "Message": " ".join(v.warnings)})
+                     "Disposal": advice_for(p.label)["bin"], "Message": " ".join(notes)})
     return pd.DataFrame(rows)
 
 
@@ -131,13 +135,23 @@ def show_batch(results: pd.DataFrame) -> None:
     c2.metric("Confident", n_ok)
     c3.metric("Uncertain", n_unc)
     c4.metric("Rejected", n_rej)
-    counts = results.loc[results["Status"] != "REJECTED", "Prediction"].value_counts()
-    if len(counts):
-        st.bar_chart(counts.reindex(model.class_names).fillna(0))
-    st.dataframe(results, hide_index=True, column_config={
-        "Confidence": st.column_config.ProgressColumn("Confidence", format="%.3f", min_value=0.0, max_value=1.0)})
+    table_height = min(38 + 35 * len(results), 600)   # show every row (scroll only for long lists)
+    st.dataframe(results, hide_index=True, height=table_height, column_config={
+        "Confidence": st.column_config.ProgressColumn("Confidence", format="%.3f", min_value=0.0, max_value=1.0),
+        "Message": st.column_config.TextColumn("Message", width="large")})
+    # Explain every rejected or flagged file in full (the table cells may be too narrow).
+    for row in results.itertuples():
+        if row.Status == "REJECTED":
+            st.error(f"**{row.File}** was rejected: {row.Message}")
+        elif row.Message:
+            st.info(f"**{row.File}**: {row.Message}")
     st.download_button("⬇️ Download results as CSV", results.to_csv(index=False).encode("utf-8"),
                        file_name="waste_predictions.csv", mime="text/csv")
+    counts = results.loc[results["Status"] != "REJECTED", "Prediction"].value_counts()
+    if len(counts):
+        st.caption("Number of accepted images per predicted material")
+        st.bar_chart(counts.reindex(model.class_names).fillna(0).astype(int), horizontal=True, height=230,
+                     x_label="", y_label="Images")
 
 
 # --------------------------------------------------------------------------------------
@@ -224,7 +238,13 @@ with tab_model:
             st.caption(f"95% bootstrap confidence interval of the accuracy: {lo:.1%} - {hi:.1%} "
                        f"(n = {metrics.get('n', '?')} test images).")
     if info.get("per_class"):
-        st.dataframe(pd.DataFrame(info["per_class"]), hide_index=True)
+        per_class = pd.DataFrame(info["per_class"]).rename(columns={
+            "class": "Class", "precision": "Precision", "recall": "Recall", "f1": "F1",
+            "roc_auc": "ROC-AUC", "support": "Test images"})
+        st.dataframe(per_class, hide_index=True, column_config={
+            c: st.column_config.NumberColumn(c, format="%.3f") for c in ["Precision", "Recall", "F1", "ROC-AUC"]})
+        st.caption("Precision: how often a prediction of this class is right. Recall: how many items of this "
+                   "class are found. F1: balance of the two (1 = perfect).")
     cm_path = DEFAULT_MODEL_DIR / "confusion_matrix.png"
     if cm_path.exists():
         st.image(str(cm_path), caption="Confusion matrix on the test set", width=520)
@@ -233,8 +253,12 @@ with tab_model:
     st.write(f"- Training data: {info.get('dataset')}")
     st.write(f"- Model file: ONNX, {info.get('onnx_file_mb', '?')} MB; average CPU time "
              f"{(info.get('cpu_latency_ms') or {}).get('median_ms', float('nan')):.0f} ms per image")
-    st.write("- Limitations: one item per photo; the model only knows these six materials, so other objects "
-             "(e.g. food, electronics, textiles) are forced into the closest class - watch the confidence.")
+    st.write("- Limitations: one item per photo; the model only knows these six classes, so objects unlike the "
+             "training photos (e.g. batteries, electronics, several items together) are still forced into the "
+             "closest class - watch the confidence and the UNCERTAIN flag.")
+    st.write("- In the training data, *trash* consists mainly of clothes, shoes, food waste, batteries and mixed "
+             "rubbish, and drink cartons (Tetra Pak) are labelled *cardboard* although they are not accepted in "
+             "New Zealand kerbside recycling - the disposal tips cover these cases.")
 
 # ---- 4. help ---------------------------------------------------------------------------
 with tab_help:

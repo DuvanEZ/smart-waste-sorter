@@ -13,7 +13,9 @@ GUIDE = {
         "bin": "Recycling bin (paper & cardboard)",
         "recyclable": True,
         "tips": ["Flatten boxes and keep them dry.", "Remove plastic tape, film and polystyrene inserts.",
-                 "Pizza boxes are accepted if food scraps are removed."],
+                 "Pizza boxes are accepted if food scraps are removed.",
+                 "Drink cartons (juice, long-life milk, soup - 'Tetra Pak'), waxed cardboard and takeaway "
+                 "coffee cups are NOT accepted at kerbside, although they look like cardboard."],
     },
     "glass": {
         "icon": "🍾",
@@ -34,7 +36,7 @@ GUIDE = {
         "bin": "Recycling bin (paper & cardboard)",
         "recyclable": True,
         "tips": ["Keep paper clean and dry.", "Shredded paper, tissues and paper towels are NOT accepted.",
-                 "Liquid paperboard (juice/milk cartons) is NOT accepted at kerbside."],
+                 "Paper laminated with plastic or foil (e.g. glitter cards, foil gift wrap) is NOT accepted."],
     },
     "plastic": {
         "icon": "🧴",
@@ -45,10 +47,12 @@ GUIDE = {
     },
     "trash": {
         "icon": "🗑️",
-        "bin": "General rubbish (landfill)",
+        "bin": "Not for the recycling bin – general rubbish, or a special option below",
         "recyclable": False,
-        "tips": ["Not recyclable at kerbside.", "Food scraps: use a food-scraps bin or compost where available.",
-                 "Hazardous items (batteries, e-waste) need a special drop-off."],
+        "tips": ["Batteries are hazardous: never put them in any kerbside bin – take them to a battery drop-off point.",
+                 "Clothes and shoes in good condition: donate them or use a textile recycling bin.",
+                 "Food scraps: use a food-scraps bin or compost where available.",
+                 "Everything else that cannot be recycled goes in the general rubbish (landfill) bin."],
     },
 }
 
