@@ -1,0 +1,10 @@
+{
+  "name": "smart-waste-sorter-report-builder",
+  "private": true,
+  "description": "Builds the project report (.docx) and slides (.pptx) from the pipeline results",
+  "dependencies": {
+    "cfb": "^1.2.2",
+    "docx": "^9.5.0",
+    "pptxgenjs": "^3.12.0"
+  }
+}
