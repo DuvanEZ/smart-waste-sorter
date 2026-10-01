@@ -75,8 +75,9 @@ const doc = new Document({
       children: part1.cover(R),
     },
     {
-      properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1440, bottom: 1440, left: 1440, right: 1440 },
-                            pageNumbers: { start: 1 } } },
+      // page numbers continue from the cover (the cover itself shows no number), so that the
+      // numbers in the table of contents and in the footers agree in Word and LibreOffice
+      properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1440, bottom: 1440, left: 1440, right: 1440 } } },
       headers: { default: new Header({ children: [new Paragraph({ alignment: AlignmentType.RIGHT,
         children: [new TextRun({ text: "INFO813 Project – Smart Waste Sorter", size: 17, color: L.MUTED })] })] }) },
       footers: { default: new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER,

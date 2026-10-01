@@ -259,13 +259,30 @@ def evaluation_part(R, m, test, per_class, confused, selective, robust, hist, tr
     else:
         cal = ("Before scaling, the points lie *below* the diagonal: the model was **over-confident**, as is typical "
                "for modern deep networks (Guo et al., 2017). ")
+    cal_detail = ""
+    pred_csv = m / "test_predictions.csv"
+    if pred_csv.exists():
+        import numpy as np
+
+        preds = pd.read_csv(pred_csv)
+        prob = preds[[f"p_{c}" for c in CLASSES]].to_numpy(float)
+        conf, correct = prob.max(1), prob.argmax(1) == preds["label"].to_numpy()
+        hi = conf > 0.8
+        mid = (conf > 0.4) & (conf <= 0.8)
+        b89 = (conf > 0.8) & (conf <= 0.9)
+        b9 = conf > 0.9
+        cal_detail = (
+            f"After scaling, the predictions with more than 80% confidence – {pct(hi.mean())} of the test images – are "
+            f"almost perfectly calibrated (mean confidence {pct(conf[b89].mean())} vs accuracy {pct(correct[b89].mean())} "
+            f"in the 80–90% bin, {pct(conf[b9].mean())} vs {pct(correct[b9].mean())} above 90%). The {int(mid.sum())} "
+            f"predictions between 40% and 80% confidence are somewhat over-confident (mean confidence "
+            f"{pct(conf[mid].mean(), 0)}, accuracy {pct(correct[mid].mean(), 0)}); these few bins also contain too few "
+            "images for precise estimates. Moderately confident predictions should therefore be checked, which is why "
+            "the application names the second most likely class and flags the least confident ones as UNCERTAIN.")
     interp["calibration"] = cal + (
-        f"Temperature scaling (T = {T:.2f}, fitted on the validation set) moved the curve onto the diagonal and "
+        f"Temperature scaling (T = {T:.2f}, fitted on the validation set) moved the curve towards the diagonal and "
         f"reduced the expected calibration error from {test['ece_before_temperature']:.3f} to {test['ece']:.3f}, "
-        f"and the log-loss from {test['log_loss_before_temperature']:.3f} to {test['log_loss']:.3f}. "
-        "The confidence shown in the application can therefore be read as a probability: of all predictions shown "
-        "with about 80% confidence, about 80% are correct. Only the few bins below 40% confidence contain too few "
-        "images for a reliable estimate.")
+        f"and the log-loss from {test['log_loss_before_temperature']:.3f} to {test['log_loss']:.3f}. " + cal_detail)
 
     sel = selective.set_index("threshold")
     def at(t):
