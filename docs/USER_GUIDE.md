@@ -6,7 +6,7 @@ Smart Waste Sorter looks at a photo of **one waste item** and predicts its mater
 
 | Class | Examples | Disposal (NZ standard kerbside rules) |
 |---|---|---|
-| cardboard | boxes, packaging | Recycling bin (paper & cardboard) |
+| cardboard | boxes, packaging (drink cartons look similar but are **not** accepted at kerbside) | Recycling bin (paper & cardboard) |
 | glass | bottles, jars | Glass crate / glass recycling |
 | metal | aluminium and steel cans, tins | Recycling bin (cans) |
 | paper | newspaper, office paper, magazines | Recycling bin (paper & cardboard) |
@@ -60,15 +60,18 @@ Choose how to provide the picture:
 
 The result card shows the photo, the predicted class (e.g. **GLASS**), a confidence bar, a green
 *Confident prediction* or yellow *UNCERTAIN* message, the correct bin with recycling tips, and a table
-with the probability of each class.
+with the probability of each class. When the prediction is *UNCERTAIN*, the card names the second most
+likely class and phrases the advice conditionally ("Where does it go if it is …?") – check the item yourself
+or take a clearer photo.
 
 ### Tab 2 – Batch classification
 * **Upload several files** – select many images, then click *Classify uploaded images*; or
 * **Classify a folder on this computer** – type or paste a folder path, e.g. `C:\Users\me\Pictures\waste`
   or `/Users/me/waste`, then click *Classify folder* (all supported images directly in the folder, max. 500).
 
-The tab shows counts (files, confident, uncertain, rejected), a bar chart of the predicted classes and a
-table. **Download results as CSV** saves the table.
+The tab shows counts (files, confident, uncertain, rejected), a results table (one row per file), a red
+explanation for every rejected file and a blue note for every flagged file, a **Download results as CSV**
+button and a bar chart of the number of items per predicted material.
 
 ### Tab 3 – Model performance
 Test-set accuracy, macro-F1, top-2 accuracy, ROC-AUC, per-class precision/recall/F1 and the confusion matrix.
