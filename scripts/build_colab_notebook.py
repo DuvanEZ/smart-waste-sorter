@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PKG = ROOT / "src" / "waste_classifier"
 OUT = ROOT / "notebooks" / "Smart_Waste_Sorter_Colab.ipynb"
 MODULES = ["__init__", "config", "utils", "data", "image_analysis", "features", "models", "train",
-           "evaluate", "explain", "export", "plots", "pipeline"]
+           "evaluate", "explain", "export", "plots", "provenance", "pipeline"]
 
 md = nbf.v4.new_markdown_cell
 code = nbf.v4.new_code_cell
@@ -148,6 +148,14 @@ cells.append(code("""pl.deep_embeddings(ctx, ws, device, workers=WORKERS)
 pl.tsne_map(ctx, ws)
 show("fig12_tsne_embeddings.png")"""))
 
+cells.append(md("""### Where did the images come from? (provenance check)
+The Kaggle page does not document the original sources, so candidate public data sets
+(TrashNet and two larger garbage collections on Kaggle) are downloaded and every image is
+compared with ours through perceptual hashes. Matching images reveal the origin of the data."""))
+cells.append(code("""provenance_summary = pl.provenance(ctx, ws, workers=WORKERS)
+display(provenance_summary)
+show("fig25_provenance.png")"""))
+
 cells.append(md("""## 3. Data transformation (report section 2.2)
 * Unreadable files, exact duplicates and files with conflicting labels are removed.
 * A **stratified group split** (about 70 / 15 / 15 %) keeps the class proportions in each subset and
@@ -206,6 +214,33 @@ sync_to_drive()
 if os.path.isdir(DRIVE_ROOT):
     shutil.copy(zip_file, DRIVE_OUT + "/results.zip")
     print("results.zip saved in", DRIVE_OUT)
+from google.colab import files
+files.download(str(zip_file))"""))
+
+cells.append(md("""## (Only if needed) Recovery after a crash
+If Colab stops with *"Your session crashed after using all available RAM"* **after** the training
+cell has finished, the trained weights are already saved in `outputs/model/efficientnet_b0_best.pt`.
+Do **not** run everything again: run the *Settings* cell above and then this cell. It reloads the
+model, repeats the evaluation if it had not finished, exports the model and creates `results.zip`."""))
+cells.append(code("""import torch
+from waste_classifier.models import create_efficientnet
+data = pd.read_csv(ws.metrics_dir / "splits.csv")
+root = pl.find_dataset_root("/content/data")
+data["path"] = [str(root / p) for p in data["rel_path"]]
+ctx = pl.Context(root=root, data=data)
+model = create_efficientnet(len(CLASS_NAMES), pretrained=False, drop_rate=train_cfg.drop_rate,
+                            drop_path_rate=train_cfg.drop_path_rate)
+model.load_state_dict(torch.load(ws.model_dir / "efficientnet_b0_best.pt", map_location="cpu"))
+ctx.model = model.eval()
+if (ws.metrics_dir / "baseline_results.csv").exists():
+    ctx.baselines = pd.read_csv(ws.metrics_dir / "baseline_results.csv")
+if not (ws.metrics_dir / "test_metrics.json").exists():      # evaluation had not finished
+    pl.evaluate_final(ctx, ws, device, train_cfg, workers=WORKERS)
+ctx.test_metrics = json.loads((ws.metrics_dir / "test_metrics.json").read_text())
+ctx.temperature = ctx.test_metrics["temperature"]
+info = pl.export_model(ctx, ws, train_cfg)
+zip_file = pl.package_results(ctx, ws, zip_path="/content/results.zip")
+sync_to_drive()
 from google.colab import files
 files.download(str(zip_file))"""))
 
