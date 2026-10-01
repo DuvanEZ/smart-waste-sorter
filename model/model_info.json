@@ -1,0 +1,124 @@
+{
+  "model_name": "EfficientNet-B0 (transfer learning, fine-tuned)",
+  "class_names": [
+    "cardboard",
+    "glass",
+    "metal",
+    "paper",
+    "plastic",
+    "trash"
+  ],
+  "input_size": 224,
+  "resize": "shorter side to input_size (bicubic), then centre crop",
+  "mean": [
+    0.485,
+    0.456,
+    0.406
+  ],
+  "std": [
+    0.229,
+    0.224,
+    0.225
+  ],
+  "temperature": 0.6278959144302323,
+  "confidence_threshold": 0.6,
+  "metrics": {
+    "accuracy": 0.9611940298507463,
+    "macro_f1": 0.9600090612942354,
+    "balanced_accuracy": 0.9602992735232966,
+    "top2_accuracy": 0.991044776119403,
+    "roc_auc_ovr_macro": 0.9961272896912373,
+    "ece": 0.008029451797257565,
+    "accuracy_ci": [
+      0.951044776119403,
+      0.9701492537313433
+    ],
+    "macro_f1_ci": [
+      0.9496055341043588,
+      0.968933991485797
+    ],
+    "n": 1675
+  },
+  "per_class": [
+    {
+      "class": "cardboard",
+      "precision": 0.9603,
+      "recall": 0.9758,
+      "f1": 0.968,
+      "support": 248,
+      "roc_auc": 0.9979
+    },
+    {
+      "class": "glass",
+      "precision": 0.9576,
+      "recall": 0.9664,
+      "f1": 0.9619,
+      "support": 327,
+      "roc_auc": 0.9968
+    },
+    {
+      "class": "metal",
+      "precision": 0.9449,
+      "recall": 0.9612,
+      "f1": 0.953,
+      "support": 232,
+      "roc_auc": 0.9978
+    },
+    {
+      "class": "paper",
+      "precision": 0.9615,
+      "recall": 0.9542,
+      "f1": 0.9579,
+      "support": 262,
+      "roc_auc": 0.9887
+    },
+    {
+      "class": "plastic",
+      "precision": 0.9542,
+      "recall": 0.9347,
+      "f1": 0.9443,
+      "support": 245,
+      "roc_auc": 0.9964
+    },
+    {
+      "class": "trash",
+      "precision": 0.9804,
+      "recall": 0.9695,
+      "f1": 0.9749,
+      "support": 361,
+      "roc_auc": 0.9992
+    }
+  ],
+  "onnx_file_mb": 8.1,
+  "cpu_latency_ms": {
+    "median_ms": 15.233510999905775,
+    "p90_ms": 19.36873549993834
+  },
+  "parity": {
+    "max_abs_diff_fp32": 9.179115295410156e-06,
+    "max_abs_diff_fp16_weights": 0.011789798736572266,
+    "prediction_agreement_fp16_weights": 1.0,
+    "n_images_checked": 256
+  },
+  "trained_on": "2026-10-01",
+  "dataset": "Garbage Images Dataset (2000/class), Kaggle: zlatan599/garbage-dataset-classification",
+  "environment": {
+    "python": "3.13.15",
+    "platform": "Linux-6.6.122+-x86_64-with-glibc2.39",
+    "numpy": "2.1.3",
+    "pandas": "2.2.3",
+    "sklearn": "1.6.1",
+    "skimage": "0.25.2",
+    "cv2": "5.0.0",
+    "PIL": "11.3.0",
+    "matplotlib": "3.10.0",
+    "torch": "2.11.0+cu128",
+    "torchvision": "0.26.0+cu128",
+    "timm": "1.0.29",
+    "onnx": "1.23.1",
+    "onnxruntime": "1.30.0",
+    "imagehash": "4.3.2",
+    "cuda_available": true,
+    "gpu": "Tesla T4"
+  }
+}
